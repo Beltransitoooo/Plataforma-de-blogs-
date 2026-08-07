@@ -54,3 +54,8 @@ def crear_publicacion(
     db.refresh(nueva_publicacion)
 
     return nueva_publicacion
+
+@router.get("/posts", response_model=list[schemas.Publicacion])
+def obtener_publicaciones(db: Session = Depends(get_db)):
+    publicaciones = db.query(models.Publicacion).all()
+    return publicaciones
