@@ -33,3 +33,24 @@ def crear_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db))
     db.refresh(nuevo_usuario)
 
     return nuevo_usuario
+
+@router.post("/posts/", response_model=schemas.Publicacion)
+def crear_publicacion(
+    publicacion: schemas.PublicacionCreate,
+    usuario_id: int,
+    db: Session = Depends(get_db)
+):
+    autor_existente = db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
+    if not autor_existente:
+        raise HTTPException(status_code=400, detail="El usuario autor de este post no existe.")
+
+    nueva_publicacion = models.Publicacion(
+        titulo=publicacion.titulo,
+        contenid=publicacion.contenido,
+        id_propietario=usuario_id
+    )
+    db.add(nueva_publicacion)
+    db.commit()
+    db.refresh(nueva_publicacion)
+
+    return nueva_publicacion
