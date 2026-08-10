@@ -17,8 +17,8 @@ def get_db():
 
 @router.post("/", response_model=schemas.Usuario)
 def crear_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
-
     correo_existente = db.query(models.Usuario).filter(models.Usuario.correo == usuario.correo).first()
+
     if correo_existente:
         raise HTTPException(status_code=400, detail="Este correo ya esta regsitrado en sistema.")
 
@@ -35,20 +35,18 @@ def crear_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db))
     return nuevo_usuario
 
 @router.post("/posts/", response_model=schemas.Publicacion)
-def crear_publicacion(
-    publicacion: schemas.PublicacionCreate,
-    usuario_id: int,
-    db: Session = Depends(get_db)
-):
+def crear_publicacion(publicacion: schemas.PublicacionCreate, usuario_id: int, db: Session = Depends(get_db)):
     autor_existente = db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
+
     if not autor_existente:
         raise HTTPException(status_code=400, detail="El usuario autor de este post no existe.")
 
     nueva_publicacion = models.Publicacion(
         titulo=publicacion.titulo,
-        contenid=publicacion.contenido,
+        contenido=publicacion.contenido,
         id_propietario=usuario_id
     )
+
     db.add(nueva_publicacion)
     db.commit()
     db.refresh(nueva_publicacion)
@@ -63,6 +61,24 @@ def obtener_publicaciones(db: Session = Depends(get_db)):
 @router.get("/posts/{id}")
 def obtener_publicacion_id(id: int, db: Session = Depends(get_db)):
     publicacion_id = db.query(models.Publicacion).filter(models.Publicacion.id == id).first()
+
     if not publicacion_id:
         raise HTTPException(status_code=404, detail="La publicacion no existe")
     return publicacion_id
+
+@router.put("/posts/{id}")
+def actualizar_post(id: int, publicacion: schemas.PublicacionCreate, db: Session = Depends(get_db)):
+      post_actualizado = db.query(models.Publicacion).filter(models.Publicacion.id == id).first()
+
+      if not post_actualizado:
+          raise HTTPException(status_code=404, detail="El post que intenta actualizar no existe")
+
+      post_actualizado.titulo = publicacion.titulo
+      post_actualizado.contenido = publicacion.contenido
+
+      db.commit()
+      db.refresh(post_actualizado)
+
+      return post_actualizado
+
+      
