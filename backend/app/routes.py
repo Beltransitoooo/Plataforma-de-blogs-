@@ -56,6 +56,7 @@ def crear_publicacion(publicacion: schemas.PublicacionCreate, usuario_id: int, d
 @router.get("/posts", response_model=list[schemas.Publicacion])
 def obtener_publicaciones(db: Session = Depends(get_db)):
     publicaciones = db.query(models.Publicacion).all()
+
     return publicaciones
 
 @router.get("/posts/{id}")
@@ -64,6 +65,7 @@ def obtener_publicacion_id(id: int, db: Session = Depends(get_db)):
 
     if not publicacion_id:
         raise HTTPException(status_code=404, detail="La publicacion no existe")
+    
     return publicacion_id
 
 @router.put("/posts/{id}")
@@ -81,4 +83,14 @@ def actualizar_post(id: int, publicacion: schemas.PublicacionCreate, db: Session
 
       return post_actualizado
 
-      
+@router.delete("/posts/{id}")
+def eliminar_post(id: int, db: Session = Depends(get_db)):
+    post_eliminado = db.query(models.Publicacion).filter(models.Publicacion.id == id).first()
+
+    if not post_eliminado:
+        raise HTTPException(status_code=404, detail="El post que intenta eliminar no existe")
+
+    db.delete(post_eliminado)
+    db.commit()
+
+    return post_eliminado
