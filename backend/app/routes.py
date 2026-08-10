@@ -59,3 +59,10 @@ def crear_publicacion(
 def obtener_publicaciones(db: Session = Depends(get_db)):
     publicaciones = db.query(models.Publicacion).all()
     return publicaciones
+
+@router.get("/posts/{id}")
+def obtener_publicacion_id(id: int, db: Session = Depends(get_db)):
+    publicacion_id = db.query(models.Publicacion).filter(models.Publicacion.id == id).first()
+    if not publicacion_id:
+        raise HTTPException(status_code=404, detail="La publicacion no existe")
+    return publicacion_id
