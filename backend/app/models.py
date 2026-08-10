@@ -12,7 +12,7 @@ class Usuario(Base):
 
     publicaciones = relationship("Publicacion", back_populates="propietario", cascade="all, delete-orphan")
 
-class Publicaciones(Base):
+class Publicacion(Base):
     __tablename__ = "publicaciones"
     id = Column(Integer, primary_key=True, index=True)
     titulo = Column(String, nullable=False)
@@ -20,4 +20,4 @@ class Publicaciones(Base):
     creado_en = Column(DateTime, default=datetime.utcnow)
     id_propietario = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
 
-    publicaciones = relationship("Usuario", back_populates="publicaciones")
+    propietario = relationship("Usuario", back_populates="publicaciones")
