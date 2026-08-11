@@ -94,3 +94,13 @@ def eliminar_post(id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return post_eliminado
+
+@router.delete("/delete/{id}")
+def eliminar_usuario(id: int, db: Session = Depends(get_db)):
+    usuario_eliminado = db.query(models.Usuario).filter(models.Usuario.id == id).first()
+
+    if not usuario_eliminado:
+        raise HTTPException(status_code=404, detail="El ususario que intenta eliminar no existe")
+
+    db.delete(usuario_eliminado)
+    db.commit()
