@@ -9,7 +9,7 @@ function App(){
   useEffect(() => {
     const fetchPosts = async () => {
       try {
-        const response = await api.get('/posts');
+        const response = await api.get('/posts/');
         setPosts(response.data);
       } catch (error) {
         console.error('Error al cargar los posts:', error);
