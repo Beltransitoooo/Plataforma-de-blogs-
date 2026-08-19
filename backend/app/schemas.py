@@ -17,6 +17,10 @@ class Publicacion(PublicacionBase):
         from_attributes = True
 
 
+class UsuarioLogin(BaseModel):
+    correo: str
+    contraseña: str
+
 class UsuarioBase(BaseModel):
     nombre_usuario: str
     correo: EmailStr
@@ -26,8 +30,16 @@ class UsuarioCreate(UsuarioBase):
 
 class Usuario(UsuarioBase):
     id: int
+    nombre_usuario: str
     publicaciones: list[Publicacion] = []
-
+    
     class Config:
         from_attributes = True
 
+class UsuarioSimple(BaseModel):
+    id: int
+    nombre_usuario: str
+    correo: EmailStr
+
+    class Config:
+        from_attributes = True

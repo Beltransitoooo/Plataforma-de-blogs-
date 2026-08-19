@@ -2,73 +2,86 @@ import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import './App.css';
 
-// URL BASE DE TU API DE FASTAPI
-const API_URL = 'http://127.0.0.1:8000/usuarios';
+import {
+  apiObtenerPosts,
+  apiObtenerUsuarios,
+  apiRegistrarUsuario,
+  apiLoginUsuario,
+  apiCrearPost,
+  apiActualizarPost,
+  apiEliminarPost
+} from './services/api';
+
+import Navbar from './components/Navbar';
+import AuthView from './views/AuthView';
+import FeedView from './views/FeedView';
+import DetailView from './views/DetailView';
+import FormView from './views/FormView';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  
-  // Estados para Autenticación
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Estados de Autenticación
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
 
-  // Control de vista: 'feed' o 'crear'
+  // Vistas: 'feed', 'crear', 'detalle', 'editar'
   const [vistaActual, setVistaActual] = useState('feed');
+  const [postSeleccionado, setPostSeleccionado] = useState(null);
 
-  // Lista de usuarios (se cargará dinámica o simulada)
-  const [usuariosRegistrados, setUsuariosRegistrados] = useState([
-    { id: 1, name: 'Carlos Dev' },
-    { id: 2, name: 'María Designer' },
-    { id: 3, name: 'Juan Fullstack' }
-  ]);
-
-  // Estado para filtrar posts por autor
+  // Datos
+  const [posts, setPosts] = useState([]);
+  const [listaUsuarios, setListaUsuarios] = useState([]);
   const [usuarioFiltrado, setUsuarioFiltrado] = useState(null);
 
-  // ESTADO DE PUBLICACIONES (Inicia vacío y se llena desde PostgreSQL)
-  const [posts, setPosts] = useState([]);
-
-  // Formulario de creación de post
+  // Formulario
   const [titulo, setTitulo] = useState('');
   const [contenido, setContenido] = useState('');
 
-  // -------------------------------------------------------------
-  // 1. CARGAR PUBLICACIONES DESDE FASTAPI (GET /usuarios/posts)
-  // -------------------------------------------------------------
-  const obtenerPostsAPI = async () => {
+  const cargarPosts = async () => {
     try {
-      const response = await fetch(`${API_URL}/posts`);
-      if (response.ok) {
-        const data = await response.json();
-        setPosts(data);
-      } else {
-        toast.error('Error al obtener publicaciones de la base de datos');
-      }
+      const data = await apiObtenerPosts();
+      setPosts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error al conectar con FastAPI:', error);
-      toast.error('No se pudo conectar con el servidor Backend');
+      console.error(error);
+    }
+  };
+
+  const cargarUsuarios = async () => {
+    try {
+      const data = await apiObtenerUsuarios();
+      setListaUsuarios(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
     }
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('token_sesion');
-    if (token) {
-      setIsLoggedIn(true);
+    try {
+      const sesionGuardada = localStorage.getItem('usuario_logueado');
+      if (sesionGuardada && sesionGuardada !== 'undefined' && sesionGuardada !== 'null') {
+        const user = JSON.parse(sesionGuardada);
+        if (user && user.id) {
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+        }
+      }
+    } catch (e) {
+      localStorage.removeItem('usuario_logueado');
     }
   }, []);
 
-  // Cargar publicaciones de la BD cuando el usuario inicie sesión
   useEffect(() => {
     if (isLoggedIn) {
-      obtenerPostsAPI();
+      cargarPosts();
+      cargarUsuarios();
     }
   }, [isLoggedIn]);
 
-  // -------------------------------------------------------------
-  // 2. MANEJADOR DE REGISTRO / LOGIN (POST /usuarios/)
-  // -------------------------------------------------------------
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
 
@@ -78,127 +91,128 @@ export default function App() {
         return;
       }
 
+      setIsLoading(true);
       try {
-        // Petición POST a tu endpoint de crear_usuario
-        const response = await fetch(`${API_URL}/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nombre_usuario: authName.trim(),
-            correo: authEmail.trim(),
-            contraseña: authPassword.trim()
-          })
-        });
+        const res = await apiRegistrarUsuario(authName.trim(), authEmail.trim(), authPassword.trim());
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const data = await response.json();
-
-        if (response.ok) {
-          toast.success('¡Usuario registrado exitosamente en PostgreSQL!');
-          
-          // Agregamos el usuario recién registrado al dropdown
-          setUsuariosRegistrados([
-            ...usuariosRegistrados, 
-            { id: data.id, name: data.nombre_usuario }
-          ]);
-
+        if (res.ok) {
+          toast.success('¡Registro exitoso! Ya puedes iniciar sesión.');
           setIsRegistering(false);
           setAuthPassword('');
           setAuthName('');
+          cargarUsuarios();
         } else {
+          const data = await res.json();
           toast.error(data.detail || 'Error al registrar usuario');
         }
       } catch (error) {
-        toast.error('Error al conectar con el servidor de registros');
+        toast.error('No se pudo conectar con el servidor');
+      } finally {
+        setIsLoading(false);
       }
+
     } else {
       if (!authEmail.trim() || !authPassword.trim()) {
-        toast.error('Por favor, completa correo y contraseña');
+        toast.error('Ingresa tu correo y contraseña');
         return;
       }
 
-      // Login simulado local por ahora
-      localStorage.setItem('token_sesion', 'mock-jwt-token-12345');
-      setIsLoggedIn(true);
-      toast.success('¡Bienvenido de vuelta!');
+      setIsLoading(true);
+      try {
+        const res = await apiLoginUsuario(authEmail.trim(), authPassword.trim());
+        const data = await res.json();
+        await new Promise(resolve => setTimeout(resolve, 1200));
+
+        if (res.ok && data && data.usuario) {
+          localStorage.setItem('usuario_logueado', JSON.stringify(data.usuario));
+          setCurrentUser(data.usuario);
+          setIsLoggedIn(true);
+          toast.success(`¡Bienvenido ${data.usuario.nombre_usuario}!`);
+        } else {
+          toast.error(data.detail || 'Correo o contraseña incorrectos');
+        }
+      } catch (error) {
+        toast.error('Error de conexión con FastAPI');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleCerrarSesion = (e) => {
     e.preventDefault();
-    localStorage.removeItem('token_sesion');
+    localStorage.removeItem('usuario_logueado');
     setIsLoggedIn(false);
-    setAuthEmail('');
-    setAuthPassword('');
-    setAuthName('');
+    setCurrentUser(null);
     setUsuarioFiltrado(null);
-    setVistaActual('feed');
+    setPostSeleccionado(null);
     toast('Sesión cerrada correctamente');
   };
 
-  // -------------------------------------------------------------
-  // 3. CREAR UN NUEVO POST EN BASE DE DATOS (POST /usuarios/posts/?usuario_id=1)
-  // -------------------------------------------------------------
-  const handleCrearPost = async (e) => {
+  const handleGuardarPost = async (e) => {
     e.preventDefault();
     
     if (!titulo.trim() || !contenido.trim()) {
-      toast.error('Por favor, completa el título y contenido del post');
+      toast.error('Completa el título y contenido');
       return;
     }
 
-    try {
-      // Tu endpoint requiere usuario_id como Query Parameter (?usuario_id=1)
-      const userIdPropietario = 1; // Asumiendo ID 1 por ahora
+    if (vistaActual === 'editar' && postSeleccionado) {
+      try {
+        const res = await apiActualizarPost(postSeleccionado.id, titulo.trim(), contenido.trim());
+        const postActualizado = await res.json();
 
-      const response = await fetch(`${API_URL}/posts/?usuario_id=${userIdPropietario}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: titulo.trim(),
-          contenido: contenido.trim()
-        })
-      });
-
-      const nuevoPostGuardado = await response.json();
-
-      if (response.ok) {
-        // Actualizamos la lista local agregando la respuesta de PostgreSQL
-        setPosts([nuevoPostGuardado, ...posts]);
-        setTitulo('');
-        setContenido('');
-        setVistaActual('feed');
-        toast.success('¡Publicación guardada en PostgreSQL!');
-      } else {
-        toast.error(nuevoPostGuardado.detail || 'Error al guardar publicación');
+        if (res.ok) {
+          setPosts(prev => prev.map(p => p.id === postActualizado.id ? postActualizado : p));
+          setPostSeleccionado(postActualizado);
+          setTitulo('');
+          setContenido('');
+          setVistaActual('detalle');
+          toast.success('¡Publicación actualizada!');
+        } else {
+          toast.error(postActualizado.detail || 'Error al actualizar post');
+        }
+      } catch (error) {
+        toast.error('Error de conexión');
       }
-    } catch (error) {
-      console.error(error);
-      toast.error('Ocurrió un error al conectar con la API');
+    } else {
+      try {
+        const userId = currentUser ? currentUser.id : 1;
+        const res = await apiCrearPost(userId, titulo.trim(), contenido.trim());
+        const nuevoPost = await res.json();
+
+        if (res.ok) {
+          setPosts(prev => [nuevoPost, ...prev]);
+          setTitulo('');
+          setContenido('');
+          setVistaActual('feed');
+          toast.success('¡Publicación creada en PostgreSQL!');
+        } else {
+          toast.error('Error al guardar la publicación');
+        }
+      } catch (error) {
+        toast.error('Error de conexión con el servidor');
+      }
     }
   };
 
-  // -------------------------------------------------------------
-  // 4. ELIMINAR POST DE LA BASE DE DATOS (DELETE /usuarios/posts/{id})
-  // -------------------------------------------------------------
   const handleEliminarPost = async (id) => {
     try {
-      const response = await fetch(`${API_URL}/posts/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        setPosts(posts.filter(p => p.id !== id));
-        toast.error('Publicación eliminada de PostgreSQL');
+      const res = await apiEliminarPost(id);
+      if (res.ok) {
+        setPosts(prev => prev.filter(p => p.id !== id));
+        setPostSeleccionado(null);
+        setVistaActual('feed');
+        toast.error('Publicación eliminada');
       } else {
-        const errorData = await response.json();
-        toast.error(errorData.detail || 'No se pudo eliminar el post');
+        toast.error('No se pudo eliminar el post');
       }
     } catch (error) {
-      toast.error('Error de conexión con la API');
+      toast.error('Error de conexión');
     }
   };
 
-  // Filtrado local según autor
   const postsMostrados = usuarioFiltrado 
     ? posts.filter(p => p.id_propietario === usuarioFiltrado.id)
     : posts;
@@ -214,283 +228,65 @@ export default function App() {
             border: '1px solid #263346',
             fontSize: '0.9rem',
           },
-          success: {
-            iconTheme: {
-              primary: '#10b981',
-              secondary: '#151d2a',
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#151d2a',
-            },
-          },
         }}
       />
 
       {!isLoggedIn ? (
-        /* PANTALLA DIVIDIDA DE AUTENTICACIÓN */
-        <div className="auth-split-container">
-          <div className="auth-left-side">
-            <div className="auth-card">
-              <div className="auth-header">
-                <h2 className="auth-title">
-                  {isRegistering ? 'Crear Cuenta' : 'Iniciar Sesión'}
-                </h2>
-                <p className="auth-subtitle">
-                  {isRegistering 
-                    ? 'Regístrate para acceder al gestor de contenido' 
-                    : 'Ingresa tus credenciales para continuar'}
-                </p>
-              </div>
-
-              <form onSubmit={handleAuthSubmit} className="auth-form">
-                {isRegistering && (
-                  <div className="form-group">
-                    <label className="form-label">Nombre de Usuario</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Ej. Alex Developer"
-                      value={authName}
-                      onChange={(e) => setAuthName(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label">Correo Electrónico</label>
-                  <input 
-                    type="email" 
-                    className="form-input" 
-                    placeholder="correo@ejemplo.com"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Contraseña</label>
-                  <input 
-                    type="password" 
-                    className="form-input" 
-                    placeholder="••••••••"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                  />
-                </div>
-
-                <button type="submit" className="btn btn-auth-submit">
-                  {isRegistering ? 'Registrarse' : 'Entrar'}
-                </button>
-
-                <div className="auth-toggle-container">
-                  <button 
-                    type="button" 
-                    className="btn-toggle-auth"
-                    onClick={() => {
-                      setIsRegistering(!isRegistering);
-                      setAuthName('');
-                    }}
-                  >
-                    {isRegistering 
-                      ? '¿Ya tienes cuenta? Inicia sesión' 
-                      : '¿No tienes cuenta? Regístrate'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <div className="auth-right-side">
-            <div className="brand-glow-bg"></div>
-            <div className="brand-hero-content">
-              <div className="brand-badge">
-                <span>🚀 Plataforma de Blogging</span>
-              </div>
-              <h1 className="brand-hero-title">
-                <span className="brand-icon">📝</span> StackDiario
-              </h1>
-              <p className="brand-hero-tagline">
-                Tu plataforma para compartir ideas, código y desarrollo en un solo lugar.
-              </p>
-            </div>
-          </div>
-        </div>
+        <AuthView 
+          isRegistering={isRegistering}
+          setIsRegistering={setIsRegistering}
+          isLoading={isLoading}
+          authName={authName}
+          setAuthName={setAuthName}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          handleAuthSubmit={handleAuthSubmit}
+        />
       ) : (
         <>
-          {/* NAVBAR BORDE A BORDE */}
-          <nav className="top-nav">
-            <div className="nav-brand" style={{ cursor: 'pointer' }} onClick={() => { setUsuarioFiltrado(null); setVistaActual('feed'); }}>
-              📝 StackDiario
-            </div>
-            
-            <div className="nav-actions">
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => { setUsuarioFiltrado(null); setVistaActual('feed'); }}
-              >
-                Ver Todos
-              </button>
-              
-              <div className="user-dropdown">
-                <button className="btn btn-secondary">Autores ▾</button>
-                <div className="dropdown-content">
-                  {usuariosRegistrados.map((user) => (
-                    <a 
-                      key={user.id} 
-                      href="#autor" 
-                      className="dropdown-item" 
-                      onClick={(e) => { 
-                        e.preventDefault(); 
-                        setUsuarioFiltrado(user);
-                        setVistaActual('feed');
-                        toast(`Mostrando blogs de: ${user.name}`);
-                      }}
-                    >
-                      👤 {user.name}
-                    </a>
-                  ))}
-                  <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }}></div>
-                  <a href="#salir" className="dropdown-item" style={{ color: 'var(--danger-color)' }} onClick={handleCerrarSesion}>
-                    Cerrar Sesión
-                  </a>
-                </div>
-              </div>
+          <Navbar 
+            currentUser={currentUser}
+            listaUsuarios={listaUsuarios}
+            onIrAHome={() => { setUsuarioFiltrado(null); setPostSeleccionado(null); setVistaActual('feed'); }}
+            onVerTodos={() => { setUsuarioFiltrado(null); setPostSeleccionado(null); setVistaActual('feed'); }}
+            onSeleccionarCreador={(usr) => { setUsuarioFiltrado(usr); setPostSeleccionado(null); setVistaActual('feed'); toast(`Mostrando posts de ${usr.nombre_usuario}`); }}
+            onIrACrear={() => { setTitulo(''); setContenido(''); setVistaActual('crear'); }}
+            onCerrarSesion={handleCerrarSesion}
+          />
 
-              <button className="btn btn-primary-create" onClick={() => setVistaActual('crear')}>
-                + Crear
-              </button>
-            </div>
-          </nav>
+          {vistaActual === 'feed' && (
+            <FeedView 
+              usuarioFiltrado={usuarioFiltrado}
+              setUsuarioFiltrado={setUsuarioFiltrado}
+              postsMostrados={postsMostrados}
+              listaUsuarios={listaUsuarios}
+              onSelectPost={(post) => { setPostSeleccionado(post); setVistaActual('detalle'); }}
+            />
+          )}
 
-          {/* VISTAS */}
-          {vistaActual === 'feed' ? (
-            <main className="main-container">
-              <section className="section-header">
-                <h1 className="main-title">
-                  {usuarioFiltrado ? `Blogs de: ${usuarioFiltrado.name}` : 'Publicaciones'}
-                </h1>
-                <p className="section-description">
-                  {usuarioFiltrado 
-                    ? `Filtrando publicaciones asociadas al usuario con ID #${usuarioFiltrado.id}` 
-                    : 'Crea, administra y supervisa las publicaciones de todos los autores en la plataforma.'}
-                </p>
-              </section>
+          {vistaActual === 'detalle' && postSeleccionado && (
+            <DetailView 
+              post={postSeleccionado}
+              listaUsuarios={listaUsuarios}
+              currentUser={currentUser}
+              onVolver={() => setVistaActual('feed')}
+              onAbrirEdicion={() => { setTitulo(postSeleccionado.titulo); setContenido(postSeleccionado.contenido); setVistaActual('editar'); }}
+              onEliminar={handleEliminarPost}
+            />
+          )}
 
-              <div className="posts-wrapper">
-                <div className="posts-header-bar">
-                  <h3 className="posts-counter">
-                    Publicaciones <span className="counter-badge">{postsMostrados.length}</span>
-                  </h3>
-                  {usuarioFiltrado && (
-                    <button 
-                      className="btn-clear-filter"
-                      onClick={() => setUsuarioFiltrado(null)}
-                    >
-                      Limpiar filtro ✕
-                    </button>
-                  )}
-                </div>
-                
-                {postsMostrados.length === 0 ? (
-                  <div className="empty-state">
-                    <p>No hay publicaciones en la base de datos.</p>
-                  </div>
-                ) : (
-                  <div className="posts-list">
-                    {postsMostrados.map((post) => {
-                      const autorPost = usuariosRegistrados.find(u => u.id === post.id_propietario);
-                      return (
-                        <article key={post.id} className="blog-card">
-                          <div className="blog-card-header">
-                            <span className="category-tag">General</span>
-                            <span className="author-info">
-                              Por <strong className="author-name">{autorPost ? autorPost.name : `Usuario #${post.id_propietario}`}</strong>
-                            </span>
-                          </div>
-
-                          <h2 className="blog-title">{post.titulo}</h2>
-                          <p className="blog-excerpt">{post.contenido}</p>
-
-                          <div className="blog-card-footer">
-                            <div className="action-buttons">
-                              <button className="btn-card-action edit" onClick={() => toast('Modo edición en desarrollo')}>
-                                ✏️ Editor
-                              </button>
-                              <button className="btn-card-action delete" onClick={() => handleEliminarPost(post.id)}>
-                                🗑️ Eliminar
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </main>
-          ) : (
-            <main className="main-container">
-              <div style={{ maxWidth: '650px', margin: '0 auto' }}>
-                <button 
-                  type="button" 
-                  onClick={() => setVistaActual('feed')} 
-                  className="btn-back"
-                >
-                  ← Volver a publicaciones
-                </button>
-
-                <div className="form-card">
-                  <h2 className="main-title" style={{ fontSize: '1.5rem', marginBottom: '0.5rem', textAlign: 'left' }}>
-                    Crear Nuevo Post
-                  </h2>
-                  <p className="section-description" style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
-                    Escribe el título y contenido de tu artículo para guardarlo en PostgreSQL.
-                  </p>
-
-                  <form onSubmit={handleCrearPost}>
-                    <div className="form-group">
-                      <label className="form-label">Título</label>
-                      <input 
-                        type="text" 
-                        className="form-input" 
-                        placeholder="Escribe un título descriptivo..." 
-                        value={titulo}
-                        onChange={(e) => setTitulo(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Contenido</label>
-                      <textarea 
-                        className="form-textarea" 
-                        placeholder="Escribe todo el contenido de la publicación aquí..."
-                        rows="8"
-                        value={contenido}
-                        onChange={(e) => setContenido(e.target.value)}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                      <button 
-                        type="button" 
-                        className="btn btn-secondary" 
-                        onClick={() => setVistaActual('feed')}
-                      >
-                        Cancelar
-                      </button>
-                      <button type="submit" className="btn btn-primary-create">
-                        Publicar Artículo
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            </main>
+          {(vistaActual === 'crear' || vistaActual === 'editar') && (
+            <FormView 
+              modo={vistaActual}
+              titulo={titulo}
+              setTitulo={setTitulo}
+              contenido={contenido}
+              setContenido={setContenido}
+              onSubmit={handleGuardarPost}
+              onCancelar={() => setVistaActual(vistaActual === 'editar' ? 'detalle' : 'feed')}
+            />
           )}
         </>
       )}
